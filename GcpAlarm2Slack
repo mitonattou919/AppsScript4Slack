@@ -1,0 +1,183 @@
+
+
+function postSlack(SlackPayload){
+
+  const SlackPostUrl = PropertiesService.getScriptProperties().getProperty('SLACK_URL');
+
+  const SlackPostOptions = {
+    'method' : 'POST',
+    'contentType' : 'application/json; charset=UTF-8',
+      'payload' : JSON.stringify(SlackPayload),
+  };
+
+  var res =  UrlFetchApp.fetch(SlackPostUrl, SlackPostOptions);
+  Logger.log(res.getContentText());
+
+}
+
+
+function doPost(e) {
+
+  const ObjJson = JSON.parse(e.postData.getDataAsString());
+
+  if ( ObjJson.incident.state === 'closed' ) {
+    var AttachmentColor = 'good';
+    var AlertMessage = '収まったみたいやで';
+  } else if ( ObjJson.incident.state === 'open' && ObjJson.incident.policy_name === 'Resource_Health' ) {
+    var AttachmentColor = 'danger';
+    var AlertMessage = 'ハッスルしとるで';
+  } else if ( ObjJson.incident.state === 'open' && ObjJson.incident.policy_name === 'Process_Health' ) {
+    var AttachmentColor = 'danger';
+    var AlertMessage = 'お亡くなりにならはったで';
+  } else if ( ObjJson.incident.state === 'open' && ObjJson.incident.policy_name === 'Service_Health' ) {
+    var AttachmentColor = 'danger';
+    var AlertMessage = '勝手に閉店ガラガラしとるで';
+  } else {
+    return;
+  }
+
+  const SlackPayload = {
+      'text'       : AlertMessage,
+      'attachments': [ {
+        'color': AttachmentColor,
+        'title': ObjJson.incident.incident_id,
+        'title_link': ObjJson.incident.url,
+        'text': ObjJson.incident.summary
+       } ]
+  };
+
+  postSlack(SlackPayload);
+
+  if ( ObjJson.incident.state != 'closed' ) {
+    var MyQueue = new CtrlSsQueue(ProjectName);
+    MyQueue.put();
+  }
+
+}
+
+
+
+// File Control Class
+var CtrlFile = function ( FileName ) {
+  this.FileName = FileName;
+}
+
+CtrlFile.prototype = {
+
+  // get identifier of file on root directory.
+  getSSID : function() {
+
+    const RootId = DriveApp.getRootFolder().getId();
+    const RootFolder = DriveApp.getFolderById(RootId);  
+    const RootFiles = RootFolder.getFiles();
+
+    while (RootFiles.hasNext()) {
+      var FileName = RootFiles.next();
+    
+      if ( FileName.getName() === this.FileName ) {
+        var SsId = FileName.getId();
+        break;
+      }
+    }
+    return SsId;
+  }
+}
+
+
+// Control Spread Sheet Class
+var CtrlSsQueue = function ( ProjectName ) {
+  this.ProjectName = ProjectName;
+}
+
+CtrlSsQueue.prototype = {
+
+  // put to the spreadsheet queue.
+  put : function() {
+
+    // Set Spread Sheet Name.
+    const SsName = 'QUEUE';
+
+    var MySs = new CtrlFile(SsName);
+    var SsId = MySs.getSSID();
+
+    // if not exist SS then create.
+    if ( !SsId ) {
+      SpreadsheetApp.create(SsName);
+      var MySs = new CtrlFile(SsName);
+      var SsId = MySs.getSSID();
+    }
+
+    // open spread sheet by id.
+    const ObjSs = SpreadsheetApp.openById(SsId);
+
+    // get sheet name.
+    var SheetName = ObjSs.getSheetByName(this.ProjectName);
+
+    // if not exist sheet then insert.
+    if ( !SheetName ) {
+      ObjSs.insertSheet(this.ProjectName);
+      var SheetName = ObjSs.getSheetByName(this.ProjectName);
+    }
+
+    SheetName.getRange(1,1).setValue('IncidentExist');
+
+
+  },
+  
+  // get from the spread sheet queue
+  get : function(){
+
+    // Set Spread Sheet Name.
+    const SsName = 'QUEUE';
+
+    var MySs = new CtrlFile(SsName);
+    var SsId = MySs.getSSID();
+
+    // open spread sheet by id.
+    const ObjSs = SpreadsheetApp.openById(SsId);
+
+    // get sheet name.
+    var SheetName = ObjSs.getSheetByName(this.ProjectName);
+
+    var Value = SheetName.getRange(1,1).getValue();
+
+    return Value;
+
+  },
+
+  // remove from the spreadsheet queue.
+  remove : function() {
+
+    // Set Spread Sheet Name.
+    const SsName = 'QUEUE';
+
+    var MySs = new CtrlFile(SsName);
+    var SsId = MySs.getSSID();
+
+    // if not exist SS then create.
+    if ( !SsId ) {
+      SpreadsheetApp.create(SsName);
+      var MySs = new CtrlFile(SsName);
+      var SsId = MySs.getSSID();
+    }
+
+    // open spread sheet by id.
+    const ObjSs = SpreadsheetApp.openById(SsId);
+
+    // get sheet name.
+    var SheetName = ObjSs.getSheetByName(this.ProjectName);
+
+    // if not exist sheet then insert.
+    if ( !SheetName ) {
+      ObjSs.insertSheet(this.ProjectName);
+      var SheetName = ObjSs.getSheetByName(this.ProjectName);
+    }
+
+    SheetName.getRange(1,1).setValue('IncidentNotExist');
+
+
+  }
+
+
+}
+
